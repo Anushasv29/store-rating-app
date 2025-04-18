@@ -1,0 +1,169 @@
+//auth/dto/login.dto.ts
+import { IsEmail, IsString } from 'class-validator';
+
+export class LoginDto {
+  @IsEmail()
+  email: string;
+
+  @IsString()
+  password: string;
+}
+
+//auth/auth.service.ts
+@Injectable()
+export class AuthService {
+  constructor(private jwtService: JwtService, private userService: UsersService) {}
+
+  async validateUser(email: string, password: string) {
+    const user = await this.userService.findByEmail(email);
+    if (user && await bcrypt.compare(password, user.password)) {
+      return user;
+    }
+    return null;
+  }
+
+  async login(user: any) {
+    const payload = { email: user.email, sub: user.id, role: user.role };
+    return {
+      accessToken: this.jwtService.sign(payload),
+      role: user.role,
+    };
+  }
+}
+
+//auth/auth.controller.ts
+@Controller('auth')
+export class AuthController {
+  constructor(private authService: AuthService) {}
+
+  @Post('login')
+  async login(@Body() dto: LoginDto) {
+    const user = await this.authService.validateUser(dto.email, dto.password);
+    if (!user) throw new UnauthorizedException('Invalid credentials');
+    return this.authService.login(user);
+  }
+}
+
+//2. Users Module
+
+//users/dto/create-user.dto.ts
+import { IsEmail, IsEnum, IsNotEmpty, Length, Matches, MaxLength } from 'class-validator';
+
+export class CreateUserDto {
+  @Length(20, 60)
+  name: string;
+
+  @IsEmail()
+  email: string;
+
+  @MaxLength(400)
+  address: string;
+
+  @Matches(/^(?=.*[A-Z])(?=.*[\W_]).{8,16}$/, { message: 'Password too weak' })
+  password: string;
+
+  @IsEnum(['admin', 'user', 'store_owner'])
+  role: 'admin' | 'user' | 'store_owner';
+}
+
+//users/users.service.ts
+@Injectable()
+export class UsersService {
+  constructor(private prisma: PrismaService) {}
+
+  async create(dto: CreateUserDto) {
+    const hash = await bcrypt.hash(dto.password, 10);
+    return this.prisma.user.create({
+      data: { ...dto, password: hash },
+    });
+  }
+
+  async findByEmail(email: string) {
+    return this.prisma.user.findUnique({ where: { email } });
+  }
+
+  async getAllUsers() {
+    return this.prisma.user.findMany();
+  }
+}
+
+//users/users.controller.ts
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Controller('admin')
+export class UsersController {
+  constructor(private usersService: UsersService) {}
+
+  @Roles('admin')
+  @Post('create-user')
+  async createUser(@Body() dto: CreateUserDto) {
+    return this.usersService.create(dto);
+  }
+
+  @Roles('admin')
+  @Get('users')
+  getAllUsers() {
+    return this.usersService.getAllUsers();
+  }
+}
+
+//3. Stores Module
+
+//stores/stores.service.ts
+@Injectable()
+export class StoresService {
+  constructor(private prisma: PrismaService) {}
+
+  async createStore(dto: CreateStoreDto) {
+    return this.prisma.store.create({ data: dto });
+  }
+
+  async getAllStores() {
+    return this.prisma.store.findMany({
+      include: {
+        ratings: true,
+      },
+    });
+  }
+}
+
+//stores/stores.controller.ts
+@Controller('admin')
+export class StoresController {
+  constructor(private storesService: StoresService) {}
+
+  @Post('create-store')
+  createStore(@Body() dto: CreateStoreDto) {
+    return this.storesService.createStore(dto);
+  }
+
+  @Get('stores')
+  getStores() {
+    return this.storesService.getAllStores();
+  }
+}
+
+//4. Ratings Module
+
+//ratings/ratings.service.ts
+@Injectable()
+export class RatingsService {
+  constructor(private prisma: PrismaService) {}
+
+  async rateStore(userId: number, storeId: number, rating: number) {
+    const existing = await this.prisma.rating.findFirst({
+      where: { userId, storeId },
+    });
+
+    if (existing) {
+      return this.prisma.rating.update({
+        where: { id: existing.id },
+        data: { rating },
+      });
+    }
+
+    return this.prisma.rating.create({
+      data: { userId, storeId, rating },
+    });
+  }
+}
+
