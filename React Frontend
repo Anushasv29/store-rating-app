@@ -1,0 +1,169 @@
+//1. React Router Setup
+
+//src/router.jsx
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import LoginPage from './pages/LoginPage';
+import SignupPage from './pages/SignupPage';
+import AdminDashboard from './pages/Admin/AdminDashboard';
+import UserDashboard from './pages/User/UserDashboard';
+import OwnerDashboard from './pages/StoreOwner/OwnerDashboard';
+import ProtectedRoute from './components/ProtectedRoute';
+
+export default function AppRouter() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+
+        <Route path="/admin" element={
+          <ProtectedRoute role="admin">
+            <AdminDashboard />
+          </ProtectedRoute>
+        }/>
+
+        <Route path="/user" element={
+          <ProtectedRoute role="user">
+            <UserDashboard />
+          </ProtectedRoute>
+        }/>
+
+        <Route path="/owner" element={
+          <ProtectedRoute role="store_owner">
+            <OwnerDashboard />
+          </ProtectedRoute>
+        }/>
+      </Routes>
+    </Router>
+  );
+}
+
+//2. Login Page
+
+//src/pages/LoginPage.jsx
+import { useNavigate } from 'react-router-dom';
+import { useFormik } from 'formik';
+import * as Yup from 'yup';
+import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
+
+export default function LoginPage() {
+  const navigate = useNavigate();
+  const { login } = useAuth();
+
+  const formik = useFormik({
+    initialValues: { email: '', password: '' },
+    validationSchema: Yup.object({
+      email: Yup.string().email().required(),
+      password: Yup.string().required(),
+    }),
+    onSubmit: async (values) => {
+      try {
+        const res = await axios.post('/auth/login', values);
+        login(res.data);
+        const role = res.data.role;
+        if (role === 'admin') navigate('/admin');
+        else if (role === 'user') navigate('/user');
+        else if (role === 'store_owner') navigate('/owner');
+      } catch (err) {
+        alert('Login failed!');
+      }
+    },
+  });
+
+  return (
+    <form onSubmit={formik.handleSubmit}>
+      <h2>Login</h2>
+      <input name="email" type="email" onChange={formik.handleChange} placeholder="Email" />
+      <input name="password" type="password" onChange={formik.handleChange} placeholder="Password" />
+      <button type="submit">Login</button>
+    </form>
+  );
+}
+
+//3. Signup Page (Normal User)
+
+//src/pages/SignupPage.jsx
+export default function SignupPage() {
+  const navigate = useNavigate();
+
+  const formik = useFormik({
+    initialValues: {
+      name: '',
+      email: '',
+      address: '',
+      password: ''
+    },
+    validationSchema: Yup.object({
+      name: Yup.string().min(20).max(60).required(),
+      email: Yup.string().email().required(),
+      address: Yup.string().max(400).required(),
+      password: Yup.string()
+        .min(8)
+        .max(16)
+        .matches(/[A-Z]/, 'One uppercase')
+        .matches(/[\W_]/, 'One special character')
+        .required()
+    }),
+    onSubmit: async (values) => {
+      try {
+        await axios.post('/auth/signup', values);
+        alert('Signup successful');
+        navigate('/');
+      } catch (err) {
+        alert('Signup failed');
+      }
+    },
+  });
+
+  return (
+    <form onSubmit={formik.handleSubmit}>
+      <h2>Sign Up</h2>
+      <input name="name" onChange={formik.handleChange} placeholder="Full Name" />
+      <input name="email" type="email" onChange={formik.handleChange} placeholder="Email" />
+      <input name="address" onChange={formik.handleChange} placeholder="Address" />
+      <input name="password" type="password" onChange={formik.handleChange} placeholder="Password" />
+      <button type="submit">Sign Up</button>
+    </form>
+  );
+}
+
+//4. Admin Dashboard (basic)
+
+//src/pages/Admin/AdminDashboard.jsx
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+
+export default function AdminDashboard() {
+  const [stats, setStats] = useState({});
+
+  useEffect(() => {
+    axios.get('/admin/dashboard', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+    }).then(res => setStats(res.data));
+  }, []);
+
+  return (
+    <div>
+      <h2>Admin Dashboard</h2>
+      <p>Total Users: {stats.totalUsers}</p>
+      <p>Total Stores: {stats.totalStores}</p>
+      <p>Total Ratings: {stats.totalRatings}</p>
+    </div>
+  );
+}
+
+//5. Protected Route Component
+
+//src/components/ProtectedRoute.jsx
+import { Navigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+
+export default function ProtectedRoute({ children, role }) {
+  const { user } = useAuth();
+
+  if (!user) return <Navigate to="/" />;
+  if (user.role !== role) return <Navigate to="/" />;
+
+  return children;
+}
