@@ -1,0 +1,101 @@
+\\PART 2: Sample API Requests & Responses
+
+\\1. Register Normal User
+POST /auth/signup
+Content-Type: application/json
+
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "address": "123 Market Street",
+  "password": "Password@123"
+}
+
+\\Response:
+{
+  "message": "Signup successful",
+  "userId": "123"
+}
+
+\\2. Login
+POST /auth/login
+{
+  "email": "john@example.com",
+  "password": "Password@123"
+}
+
+\\Response:
+{
+  "accessToken": "jwt.token.here",
+  "role": "user"
+}
+
+
+\\3. Submit a Rating
+POST /ratings
+Authorization: Bearer jwt.token
+{
+  "storeId": 10,
+  "rating": 4
+}
+
+\\Response:
+{
+  "message": "Rating submitted successfully"
+}
+
+\\4. Admin Dashboard
+GET /admin/dashboard
+Authorization: Bearer admin.token
+
+\\Response:
+{
+  "totalUsers": 120,
+  "totalStores": 18,
+  "totalRatings": 350
+}
+
+PART 3: Boilerplate Code
+
+NestJS Auth Guard (JWT)
+// auth/jwt-auth.guard.ts
+@Injectable()
+export class JwtAuthGuard extends AuthGuard('jwt') {}
+
+React AuthContext
+// context/AuthContext.jsx
+import { createContext, useState, useContext } from 'react';
+
+const AuthContext = createContext();
+
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  
+  const login = (data) => setUser(data);
+  const logout = () => setUser(null);
+
+  return (
+    <AuthContext.Provider value={{ user, login, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = () => useContext(AuthContext);
+
+
+React StoreList Component Snippet
+function StoreCard({ store, userRating, onRate }) {
+  return (
+    <div className="store-card">
+      <h3>{store.name}</h3>
+      <p>{store.address}</p>
+      <p>Overall Rating: {store.avgRating}</p>
+      <p>Your Rating: {userRating || 'Not rated'}</p>
+      <select onChange={(e) => onRate(store.id, e.target.value)}>
+        {[1, 2, 3, 4, 5].map(n => <option key={n}>{n}</option>)}
+      </select>
+    </div>
+  );
+}
+
